@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  sleep-notifier:
+    build: .
+    container_name: sleep-slack-notifier
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persist sleep session data
+      - sleep-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - TZ=${TIMEZONE:-Asia/Hong_Kong}
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  sleep-data:
+    driver: local

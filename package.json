@@ -1,0 +1,27 @@
+{
+  "name": "sleep-slack-notifier",
+  "version": "1.0.0",
+  "description": "A tool that sends wake-up notifications to Slack using Google Health API sleep data",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "keywords": [
+    "fitbit",
+    "google-health-api",
+    "slack",
+    "sleep-tracking"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "google-auth-library": "^9.6.3",
+    "@slack/web-api": "^7.0.1",
+    "dotenv": "^16.4.1",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  }
+}
