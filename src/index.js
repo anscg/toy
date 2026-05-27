@@ -91,18 +91,36 @@ async function testConnections() {
 // Force send a notification with current sleep data
 async function forceNotification() {
   console.log('🔔 Forcing notification with latest sleep data...\n');
-  
+
   const googleHealthClient = new GoogleHealthClient();
   const slackClient = new SlackClient();
   const sleepMonitor = new SleepMonitor(googleHealthClient, slackClient);
-  
+
   await sleepMonitor.initialize();
   const success = await sleepMonitor.forceNotification();
-  
+
   if (success) {
     console.log('\n✅ Notification sent successfully!');
   } else {
     console.log('\n❌ Failed to send notification');
+  }
+}
+
+// Force send a workout summary with current workout data
+async function forceWorkoutNotification() {
+  console.log('🏋️  Forcing workout summary with latest workout data...\n');
+
+  const googleHealthClient = new GoogleHealthClient();
+  const slackClient = new SlackClient();
+  const sleepMonitor = new SleepMonitor(googleHealthClient, slackClient);
+
+  await sleepMonitor.initialize();
+  const success = await sleepMonitor.forceWorkoutNotification();
+
+  if (success) {
+    console.log('\n✅ Workout summary sent successfully!');
+  } else {
+    console.log('\n❌ Failed to send workout summary');
   }
 }
 
@@ -118,18 +136,20 @@ async function startMonitoring() {
   
   await sleepMonitor.initialize();
   
-  // Run check immediately on startup
-  console.log('Running initial check...');
+  // Run checks immediately on startup
+  console.log('Running initial checks...');
   await sleepMonitor.checkForWakeUp();
-  
+  await sleepMonitor.checkForWorkout();
+
   // Schedule checks every 15 minutes
   const schedule = process.env.CHECK_INTERVAL || '*/15 * * * *';
   console.log(`\n⏰ Scheduled checks: ${schedule}`);
   console.log('   (Default: every 15 minutes)\n');
-  
+
   cron.schedule(schedule, async () => {
     console.log(`\n--- Check at ${new Date().toLocaleString()} ---`);
     await sleepMonitor.checkForWakeUp();
+    await sleepMonitor.checkForWorkout();
   });
   
   console.log('✅ Sleep monitor is running! Press Ctrl+C to stop.\n');
@@ -149,6 +169,9 @@ async function main() {
   } else if (args.includes('--force')) {
     validateEnv();
     await forceNotification();
+  } else if (args.includes('--force-workout')) {
+    validateEnv();
+    await forceWorkoutNotification();
   } else {
     await startMonitoring();
   }

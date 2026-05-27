@@ -75,6 +75,87 @@ class SlackClient {
   }
 
   /**
+   * Send a workout summary notification to the Slack channel
+   */
+  async sendWorkoutSummary(workoutData) {
+    try {
+      const text = this.formatWorkoutMessage(workoutData);
+
+      const result = await this.client.chat.postMessage({
+        channel: this.channelId,
+        text,
+        blocks: this.createWorkoutBlocks(workoutData)
+      });
+
+      console.log(`Workout summary sent to ${this.channelId}`);
+      return result;
+    } catch (error) {
+      console.error('Error sending workout Slack message:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Format the workout fallback text
+   */
+  formatWorkoutMessage(workoutData) {
+    const { activityType, durationMinutes, calories, distanceKm } = workoutData;
+    const name = this.formatActivityName(activityType);
+    let msg = `anson just finished a ${name} (${durationMinutes} min)`;
+    if (calories) msg += `, burned ${calories} cal`;
+    if (distanceKm) msg += `, ${distanceKm} km`;
+    return msg;
+  }
+
+  /**
+   * Convert API activity type enum to a readable name
+   */
+  formatActivityName(activityType) {
+    const map = {
+      WALK: 'Walk', RUN: 'Run', SPORT_CYCLING: 'Bike', SWIM: 'Swim',
+      HIKING: 'Hike', YOGA: 'Yoga', STRENGTH_TRAINING: 'Strength Training',
+      ELLIPTICAL: 'Elliptical', PILATES: 'Pilates', DANCE: 'Dance',
+      MARTIAL_ARTS: 'Martial Arts', SPORT: 'Sport', UNKNOWN: 'Workout'
+    };
+    return map[activityType] || activityType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  /**
+   * Create rich Slack blocks for workout summary
+   */
+  createWorkoutBlocks(workoutData) {
+    const { activityType, durationMinutes, calories, distanceKm, steps, avgHeartRate, startTime, endTime } = workoutData;
+    const name = this.formatActivityName(activityType);
+
+    const fields = [
+      { type: 'mrkdwn', text: `*Activity:*\n${name}` },
+      { type: 'mrkdwn', text: `*Duration:*\n${durationMinutes} min` }
+    ];
+
+    if (calories) fields.push({ type: 'mrkdwn', text: `*Calories:*\n${calories} kcal` });
+    if (distanceKm) fields.push({ type: 'mrkdwn', text: `*Distance:*\n${distanceKm} km` });
+    if (steps) fields.push({ type: 'mrkdwn', text: `*Steps:*\n${steps.toLocaleString()}` });
+    if (avgHeartRate) fields.push({ type: 'mrkdwn', text: `*Avg HR:*\n${avgHeartRate} bpm` });
+
+    return [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*anson just finished a workout* :muscle:` }
+      },
+      {
+        type: 'section',
+        fields
+      },
+      {
+        type: 'context',
+        elements: [
+          { type: 'mrkdwn', text: `${startTime.toLocaleString()} → ${endTime.toLocaleString()}` }
+        ]
+      }
+    ];
+  }
+
+  /**
    * Test the Slack connection
    */
   async testConnection() {

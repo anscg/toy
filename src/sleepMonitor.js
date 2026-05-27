@@ -6,26 +6,35 @@ class SleepMonitor {
     this.googleHealthClient = googleHealthClient;
     this.slackClient = slackClient;
     this.stateFile = path.join(__dirname, '..', 'data', 'last_sleep.json');
+    this.workoutStateFile = path.join(__dirname, '..', 'data', 'last_workout.json');
     this.lastSleepSession = null;
+    this.lastWorkoutSession = null;
   }
 
   /**
-   * Initialize the monitor by loading the last known sleep session
+   * Initialize the monitor by loading the last known sleep and workout sessions
    */
   async initialize() {
     try {
       await fs.mkdir(path.dirname(this.stateFile), { recursive: true });
-      
+
       try {
         const data = await fs.readFile(this.stateFile, 'utf-8');
         this.lastSleepSession = JSON.parse(data);
         console.log('Loaded last sleep session:', this.lastSleepSession);
       } catch (err) {
-        // File doesn't exist yet, that's okay
         console.log('No previous sleep session found, starting fresh');
       }
+
+      try {
+        const data = await fs.readFile(this.workoutStateFile, 'utf-8');
+        this.lastWorkoutSession = JSON.parse(data);
+        console.log('Loaded last workout session:', this.lastWorkoutSession);
+      } catch (err) {
+        console.log('No previous workout session found, starting fresh');
+      }
     } catch (error) {
-      console.error('Error initializing sleep monitor:', error.message);
+      console.error('Error initializing monitor:', error.message);
     }
   }
 
@@ -94,12 +103,68 @@ class SleepMonitor {
   }
 
   /**
-   * Force check and send notification (for testing)
+   * Check for new completed workouts and send a summary if found
+   */
+  async checkForWorkout() {
+    try {
+      console.log('Checking for workout...');
+
+      const latestWorkout = await this.googleHealthClient.getLatestWorkout();
+
+      if (!latestWorkout) {
+        console.log('No workout data found');
+        return false;
+      }
+
+      const isNew = !this.lastWorkoutSession ||
+        new Date(latestWorkout.endTime).getTime() !== new Date(this.lastWorkoutSession.endTime).getTime();
+
+      if (isNew) {
+        console.log(`New workout detected: ${latestWorkout.activityType} (${latestWorkout.durationMinutes} min)`);
+
+        // Only notify if workout ended within the last hour
+        const timeSinceEnd = Date.now() - new Date(latestWorkout.endTime).getTime();
+        const oneHour = 60 * 60 * 1000;
+
+        if (timeSinceEnd <= oneHour) {
+          await this.slackClient.sendWorkoutSummary(latestWorkout);
+          await this.saveLastWorkoutSession(latestWorkout);
+          return true;
+        } else {
+          console.log('Workout was not recent (more than 1 hour ago), skipping notification');
+          await this.saveLastWorkoutSession(latestWorkout);
+        }
+      } else {
+        console.log('No new workout detected');
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Error checking for workout:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Save the last workout session to disk
+   */
+  async saveLastWorkoutSession(workoutData) {
+    try {
+      await fs.writeFile(this.workoutStateFile, JSON.stringify(workoutData, null, 2), 'utf-8');
+      this.lastWorkoutSession = workoutData;
+      console.log('Saved workout session to disk');
+    } catch (error) {
+      console.error('Error saving workout session:', error.message);
+    }
+  }
+
+  /**
+   * Force send sleep notification (for testing)
    */
   async forceNotification() {
     try {
       const latestSleep = await this.googleHealthClient.getLatestSleepSession();
-      
+
       if (!latestSleep) {
         console.log('No sleep data found');
         return false;
@@ -108,10 +173,33 @@ class SleepMonitor {
       console.log('Forcing notification for latest sleep session...');
       await this.slackClient.sendWakeUpNotification(latestSleep);
       await this.saveLastSleepSession(latestSleep);
-      
+
       return true;
     } catch (error) {
-      console.error('Error forcing notification:', error.message);
+      console.error('Error forcing sleep notification:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Force send workout notification (for testing)
+   */
+  async forceWorkoutNotification() {
+    try {
+      const latestWorkout = await this.googleHealthClient.getLatestWorkout();
+
+      if (!latestWorkout) {
+        console.log('No workout data found');
+        return false;
+      }
+
+      console.log('Forcing notification for latest workout...');
+      await this.slackClient.sendWorkoutSummary(latestWorkout);
+      await this.saveLastWorkoutSession(latestWorkout);
+
+      return true;
+    } catch (error) {
+      console.error('Error forcing workout notification:', error.message);
       return false;
     }
   }
