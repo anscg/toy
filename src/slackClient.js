@@ -156,6 +156,42 @@ class SlackClient {
   }
 
   /**
+   * Send a daily activity summary to the Slack channel
+   */
+  async sendDailySummary(summaryData) {
+    try {
+      const { date, steps, distanceKm, calories } = summaryData;
+      const text = `anson's daily summary for ${date}: ${steps?.toLocaleString() ?? '?'} steps, ${distanceKm ?? '?'} km, ${calories ?? '?'} cal burned`;
+
+      const fields = [];
+      if (steps != null)      fields.push({ type: 'mrkdwn', text: `*Steps:*\n${steps.toLocaleString()}` });
+      if (distanceKm != null) fields.push({ type: 'mrkdwn', text: `*Distance:*\n${distanceKm} km` });
+      if (calories != null)   fields.push({ type: 'mrkdwn', text: `*Calories Burned:*\n${calories.toLocaleString()} kcal` });
+
+      const result = await this.client.chat.postMessage({
+        channel: this.channelId,
+        text,
+        blocks: [
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*anson's daily summary* :bar_chart:  _${date}_` }
+          },
+          {
+            type: 'section',
+            fields: fields.length ? fields : [{ type: 'mrkdwn', text: '_No activity data available_' }]
+          }
+        ]
+      });
+
+      console.log(`Daily summary sent to ${this.channelId}`);
+      return result;
+    } catch (error) {
+      console.error('Error sending daily summary:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Test the Slack connection
    */
   async testConnection() {

@@ -110,7 +110,57 @@ class GoogleHealthClient {
   }
 
   /**
-   * Test API connection by fetching recent sleep data.
+   * Get a daily activity summary (steps, distance, calories) for a given date.
+   * Uses the dailyRollUp POST endpoint with windowSizeDays=1.
+   * @param {Date} date - the civil date to summarise (defaults to today)
+   */
+  async getDailySummary(date = new Date()) {
+    // Build the civil date from the supplied Date object
+    const y = date.getFullYear();
+    const m = date.getMonth() + 1;
+    const d = date.getDate();
+
+    const body = {
+      range: {
+        start: { date: { year: y, month: m, day: d }, time: { hours: 0, minutes: 0, seconds: 0, nanos: 0 } },
+        end:   { date: { year: y, month: m, day: d }, time: { hours: 23, minutes: 59, seconds: 59, nanos: 0 } }
+      },
+      windowSizeDays: 1
+    };
+
+    const base = 'https://health.googleapis.com/v4/users/me/dataTypes';
+
+    // Fire all three requests in parallel
+    const [stepsRes, distRes, calRes] = await Promise.allSettled([
+      this.client.request({ url: `${base}/steps/dataPoints:dailyRollUp`,         method: 'POST', data: body }),
+      this.client.request({ url: `${base}/distance/dataPoints:dailyRollUp`,      method: 'POST', data: body }),
+      this.client.request({ url: `${base}/total-calories/dataPoints:dailyRollUp`, method: 'POST', data: body })
+    ]);
+
+    const firstPoint = (res) => res.status === 'fulfilled'
+      ? res.value.data?.rollupDataPoints?.[0]
+      : null;
+
+    const sp = firstPoint(stepsRes);
+    const dp = firstPoint(distRes);
+    const cp = firstPoint(calRes);
+
+    // Field names follow the rollUp response pattern observed in the docs
+    const steps    = sp ? parseInt(sp.steps?.countSum ?? 0, 10) : null;
+    const distanceKm = dp
+      ? ((dp.distance?.distanceMillimetersSum ?? 0) / 1_000_000).toFixed(2)
+      : null;
+    const calories = cp ? Math.round(cp.totalCalories?.caloriesKcalSum ?? 0) : null;
+
+    return {
+      date: `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`,
+      steps,
+      distanceKm,
+      calories
+    };
+  }
+
+  /**
    * GET /v4/users/me/dataTypes/sleep/dataPoints?filter=sleep.interval.civil_end_time >= "YYYY-MM-DD"
    */
   async testConnection() {

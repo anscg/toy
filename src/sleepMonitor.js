@@ -7,8 +7,10 @@ class SleepMonitor {
     this.slackClient = slackClient;
     this.stateFile = path.join(__dirname, '..', 'data', 'last_sleep.json');
     this.workoutStateFile = path.join(__dirname, '..', 'data', 'last_workout.json');
+    this.dailySummaryStateFile = path.join(__dirname, '..', 'data', 'last_daily_summary.json');
     this.lastSleepSession = null;
     this.lastWorkoutSession = null;
+    this.lastDailySummaryDate = null;
   }
 
   /**
@@ -32,6 +34,13 @@ class SleepMonitor {
         console.log('Loaded last workout session:', this.lastWorkoutSession);
       } catch (err) {
         console.log('No previous workout session found, starting fresh');
+      }
+      try {
+        const data = await fs.readFile(this.dailySummaryStateFile, 'utf-8');
+        this.lastDailySummaryDate = JSON.parse(data).date;
+        console.log('Loaded last daily summary date:', this.lastDailySummaryDate);
+      } catch (err) {
+        console.log('No previous daily summary found, starting fresh');
       }
     } catch (error) {
       console.error('Error initializing monitor:', error.message);
@@ -200,6 +209,70 @@ class SleepMonitor {
       return true;
     } catch (error) {
       console.error('Error forcing workout notification:', error.message);
+      return false;
+    }
+  }
+  /**
+   * Check if a daily summary should be sent (once per calendar day)
+   * @param {Date} [date] - override the date (defaults to now in local TZ)
+   */
+  async checkDailySummary(date = new Date()) {
+    try {
+      console.log('Checking daily summary...');
+
+      // Use YYYY-MM-DD in the configured timezone
+      const tz = process.env.TIMEZONE || 'UTC';
+      const todayStr = date.toLocaleDateString('en-CA', { timeZone: tz }); // en-CA = YYYY-MM-DD
+
+      if (this.lastDailySummaryDate === todayStr) {
+        console.log(`Daily summary already sent for ${todayStr}`);
+        return false;
+      }
+
+      const summary = await this.googleHealthClient.getDailySummary(date);
+
+      if (!summary || (summary.steps == null && summary.distanceKm == null && summary.calories == null)) {
+        console.log('No daily activity data available yet');
+        return false;
+      }
+
+      await this.slackClient.sendDailySummary(summary);
+      await this.saveLastDailySummaryDate(todayStr);
+
+      return true;
+    } catch (error) {
+      console.error('Error checking daily summary:', error.message);
+      return false;
+    }
+  }
+
+  async saveLastDailySummaryDate(dateStr) {
+    try {
+      await fs.writeFile(this.dailySummaryStateFile, JSON.stringify({ date: dateStr }, null, 2), 'utf-8');
+      this.lastDailySummaryDate = dateStr;
+      console.log('Saved daily summary date to disk');
+    } catch (error) {
+      console.error('Error saving daily summary date:', error.message);
+    }
+  }
+
+  /**
+   * Force send a daily summary (for testing)
+   */
+  async forceDailySummary() {
+    try {
+      const summary = await this.googleHealthClient.getDailySummary(new Date());
+
+      if (!summary) {
+        console.log('No daily activity data found');
+        return false;
+      }
+
+      console.log('Forcing daily summary notification...');
+      await this.slackClient.sendDailySummary(summary);
+      return true;
+    } catch (error) {
+      console.error('Error forcing daily summary:', error.message);
       return false;
     }
   }

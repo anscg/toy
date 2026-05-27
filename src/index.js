@@ -124,6 +124,23 @@ async function forceWorkoutNotification() {
   }
 }
 
+async function forceDailySummaryNotification() {
+  console.log('Forcing daily summary...\n');
+
+  const googleHealthClient = new GoogleHealthClient();
+  const slackClient = new SlackClient();
+  const sleepMonitor = new SleepMonitor(googleHealthClient, slackClient);
+
+  await sleepMonitor.initialize();
+  const success = await sleepMonitor.forceDailySummary();
+
+  if (success) {
+    console.log('\n✅ Daily summary sent successfully!');
+  } else {
+    console.log('\n❌ Failed to send daily summary');
+  }
+}
+
 // Main monitoring loop
 async function startMonitoring() {
   console.log('🚀 Starting Sleep Monitor...\n');
@@ -151,7 +168,15 @@ async function startMonitoring() {
     await sleepMonitor.checkForWakeUp();
     await sleepMonitor.checkForWorkout();
   });
-  
+
+  // Schedule end-of-day summary (default: 11 pm every day)
+  const dailySchedule = process.env.DAILY_SUMMARY_CRON || '0 23 * * *';
+  console.log(`📅 Daily summary schedule: ${dailySchedule}`);
+  cron.schedule(dailySchedule, async () => {
+    console.log(`\n--- Daily summary at ${new Date().toLocaleString()} ---`);
+    await sleepMonitor.checkDailySummary();
+  }, { timezone: process.env.TIMEZONE || 'UTC' });
+
   console.log('✅ Sleep monitor is running! Press Ctrl+C to stop.\n');
 }
 
@@ -172,6 +197,9 @@ async function main() {
   } else if (args.includes('--force-workout')) {
     validateEnv();
     await forceWorkoutNotification();
+  } else if (args.includes('--force-daily')) {
+    validateEnv();
+    await forceDailySummaryNotification();
   } else {
     await startMonitoring();
   }
