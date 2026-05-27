@@ -144,14 +144,11 @@ class GoogleHealthClient {
    */
   async getLatestWorkout() {
     try {
-      const lookback = new Date();
-      lookback.setDate(lookback.getDate() - 2);
-      const dateStr = lookback.toISOString().split('T')[0];
-
+      // No filter — exercise doesn't support civil_end_time filtering.
+      // API returns results in descending order; fetch a small page and
+      // pick the most recent one within the last 2 days.
       const url = 'https://health.googleapis.com/v4/users/me/dataTypes/exercise/dataPoints';
-      const params = new URLSearchParams({
-        filter: `exercise.interval.civil_end_time >= "${dateStr}"`
-      });
+      const params = new URLSearchParams({ pageSize: 10 });
 
       const response = await this.client.request({
         url: `${url}?${params}`,
@@ -163,12 +160,16 @@ class GoogleHealthClient {
         return null;
       }
 
-      // Sort by end time descending to get the most recent workout
-      const sorted = dataPoints.sort((a, b) =>
-        new Date(b.exercise.interval.endTime) - new Date(a.exercise.interval.endTime)
+      // Filter to last 2 days client-side
+      const cutoff = Date.now() - (2 * 24 * 60 * 60 * 1000);
+      const recent = dataPoints.filter(dp =>
+        new Date(dp.exercise.interval.endTime).getTime() >= cutoff
       );
 
-      return this.parseWorkoutSession(sorted[0]);
+      if (recent.length === 0) return null;
+
+      // Already in descending order, take the first (most recent)
+      return this.parseWorkoutSession(recent[0]);
     } catch (error) {
       console.error('Error fetching exercise data:', error.message);
       if (error.response) {
